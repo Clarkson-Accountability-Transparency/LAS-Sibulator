@@ -1,0 +1,23 @@
+On Macs:
+	1. Press cmd+space and type "Terminal"
+	2. In terminal window type "cd " and drag and drop "src" folder from finder window into terminal window then press enter
+	3. Type "python3 sibulator_gui.py" into terminal window and press enter
+	4. Fill out fields as desired
+		a. Path name: put contributor file in "src" folder and just give name of file
+		b. Allele frequency data: possible inputs are "nist" or "strider"
+		c. Subpopulation: For nist options are "AfAm", "Asian", "Cauc", "Hisp" (these are case sensitive)
+		d. Num samples: number of samples needed
+		e. Destination path: Name of file to output results to (include .csv extension in name)
+
+On Windows:
+	1. Open start menu search for "command prompt", open command prompt window
+	2. In terminal window type "cd " and drag and drop "src" folder from files window into terminal window then press enter
+	3. Type "python3 sibulator_gui.py" into terminal window and press enter
+	4. Fill out fields as desired
+		a. Path name: put contributor file in "src" folder and just give name of file
+		b. Allele frequency data: possible inputs are "nist" or "strider"
+		c. Subpopulation: For nist options are "AfAm", "Asian", "Cauc", "Hisp" (these are case sensitive)
+		d. Num samples: number of samples needed
+		e. Destination path: Name of file to output results to (include .csv extension in name)
+
+Output: writes results to the output file with chosen name. First line is the known profile, everything below are the simulated samples.
