@@ -75,7 +75,7 @@ def load_allele_frequencies(use_data):
             for col in df.drop('Allele', axis=1).columns:
                 key = col.replace('_', ' ') # standardize key values (contributor profiles use space, database uses _)
                 # column is the location name ex. D3S1358
-                allele_freq_dict[key] = {**allele_freq_dict.get(key, {}), **{subpop: {'alleles': df['Allele'], 'frequency': df[col]}}}
+                allele_freq_dict[key] = {**allele_freq_dict.get(key, {}), **{subpop: {'alleles': df['Allele'].astype('float'), 'frequency': df[col].astype('float')}}}
 
                 # update total counts of each allele
                 n = N[i]
@@ -92,7 +92,8 @@ def load_allele_frequencies(use_data):
         for loc, counts in total_allele_counts.items():
             for k, v in counts.items():
                 total_allele_counts[loc][k] = v / sum(N) # normalize counts by total number of profiles
-            allele_freq_dict[loc]['total'] = {'alleles': list(counts.keys()), 'frequency': list(counts.values())}
+            allele_freq_dict[loc]['total'] = {'alleles': [float(k) for k in list(counts.keys())], 
+                                              'frequency': [float(f) for f in list(counts.values())]}
 
     return allele_freq_dict
 
@@ -144,7 +145,7 @@ def generate_one_sample(known_sample, allele_freq, subpop):
             # replace one
             p = allele_freq[loci][subpop]['frequency']
             p = p / np.sum(p) # softmax b/c frequencies don't always add to exactly 1
-            a3 = np.random.choice(a=allele_freq[loci][subpop]['alleles'], size=1, p=p)
+            a3 = np.random.choice(a=allele_freq[loci][subpop]['alleles'], size=1, p=p)[0]
             if np.random.random() < 0.5:
                 # replace 1st
                 new_alleles = [a3, a2]
