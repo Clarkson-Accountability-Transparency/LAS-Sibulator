@@ -11,91 +11,183 @@ import os
 import argparse
 from bs4 import BeautifulSoup
 
+histogram= [0,0,0,0]
+
+
 def load_allele_frequencies(use_data):
+    freq_map = {'strider':load_allele_freq_strider, 'NIST':load_allele_freq_nist, 'OCME':load_allele_freq_ocme}
+    try:
+        return freq_map[use_data]()
+    except KeyError as e:
+        raise Exception(f'Invalid frequency type, should be {freq_map.keys()}')
+
+    #if use_data == 'strider':
+    #    return load_allele_freq_strider()
+    #elif use_data == 'NIST':
+    #    return load_allele_freq_nist()
+    #elif use_data == 'OCME':
+    #    return load_allele_freq_ocme()
+    #else:
+
+def load_allele_freq_strider(filename='STRidER_frequencies_2019-08-02.xml'):
     '''
     Loads allele frequency data as seen from STRidER (https://strider.online/frequencies)
     '''
     allele_freq_dict = {} # data to be returned
-    if use_data == 'strider':
-        # Reading the data inside the xml file to a variable under the name data
-        with open('STRidER_frequencies_2019-08-02.xml', 'r') as f:
-            data = f.read()
+    # Reading the data inside the xml file to a variable under the name data
+    with open(filename , 'r') as f:
+        data = f.read()
 
-        # Passing the stored data inside the beautifulsoup parser, storing the returned object 
-        bs_data = BeautifulSoup(data, "xml")
+    # Passing the stored data inside the beautifulsoup parser, storing the returned object 
+    bs_data = BeautifulSoup(data, "xml")
 
-        # turn xml into dict for use
-        marker_data = bs_data.find_all('marker')
-        # print(len(marker_data)) # number of markers 
-        for md in marker_data:
-            loc_name = md.find('name').text # get loci name
-            allele_freq_dict[loc_name] = {}
-            
-            alleles_list = md.find('alleles').text.split(', ') # list of alleles at this site
-            origins = md.find_all('origin') # frequency data for different regions/subpopulations
-            for orig in origins:
-                orig_name = orig.get('name') # name of region
-                frequency_dict = {}
-                allele_freqs = orig.find_all('frequency') # get allele frequencies for this region
-                # add frequency data to dict for all that appear in this specific region
-                for allele in allele_freqs:
-                    al = allele.get('allele')
-                    freq = float(allele.text)
-                    frequency_dict[al] = float(allele.text)
+    # turn xml into dict for use
+    marker_data = bs_data.find_all('marker')
+    # print(len(marker_data)) # number of markers 
+    for md in marker_data:
+        loc_name = md.find('name').text # get loci name
+        allele_freq_dict[loc_name] = {}
+        
+        alleles_list = md.find('alleles').text.split(', ') # list of alleles at this site
+        origins = md.find_all('origin') # frequency data for different regions/subpopulations
+        for orig in origins:
+            orig_name = orig.get('name') # name of region
+            frequency_dict = {}
+            allele_freqs = orig.find_all('frequency') # get allele frequencies for this region
+            # add frequency data to dict for all that appear in this specific region
+            for allele in allele_freqs:
+                al = allele.get('allele')
+                freq = float(allele.text)
+                frequency_dict[al] = float(allele.text)
 
-                # fill in missing alleles with frequency 0
-                for al in alleles_list:
-                    frequency_dict[al] = frequency_dict.get(al, 0)
-                    
-                al_list = list(frequency_dict.keys()) # get allele names in list
-                freq_list = list(frequency_dict.values()) # get allele frequencies in list
-                # print(sum(freq_list)) # for verifying sum to approx 1
-            
-                allele_freq_dict[loc_name][orig_name] = {'alleles': al_list} # add info to returned dict
-                allele_freq_dict[loc_name][orig_name] = {'frequency': freq_list} # add info to returned dict
-    elif use_data == 'nist':
-        # read data in
-        afam_data = pd.read_csv(os.path.join('NIST', 'NIST Fusion AfAm_Amended2017[1].csv'))
-        asian_data = pd.read_csv(os.path.join('NIST', 'NIST Fusion Asian_Amended2017[1].csv'))
-        cauc_data = pd.read_csv(os.path.join('NIST', 'NIST Fusion Cauc_Amended2017[1].csv'))
-        hisp_data = pd.read_csv(os.path.join('NIST', 'NIST Fusion Hisp_Amended2017[1].csv'))
-        data = {'AfAm': afam_data, 'Asian': asian_data, 'Cauc': cauc_data, 'Hisp': hisp_data}
-        N = []
-        for df in data.values():
-            df_n = df[df['Allele'] == 'N']
-            N.append(int(df_n.values[0][1]))
-
-            # drop allele from index
-            df.drop(df_n.index[0], axis=0, inplace=True)
-
-        # convert data to dictionaries in expected format, also combine to create a total population frequency
-        i = 0
-        total_allele_counts = {}
-        for subpop, df in data.items():
-            for col in df.drop('Allele', axis=1).columns:
-                key = col.replace('_', ' ') # standardize key values (contributor profiles use space, database uses _)
-                # column is the location name ex. D3S1358
-                allele_freq_dict[key] = {**allele_freq_dict.get(key, {}), **{subpop: {'alleles': df['Allele'].astype('float'), 'frequency': df[col].astype('float')}}}
-
-                # update total counts of each allele
-                n = N[i]
-                for j, allele in enumerate(df['Allele']):
-                    # iterate over Series
-                    allele_freq = df.iloc[j][col] # allele frequency at current location
-                    allele_count = allele_freq * n
-                    temp_dict = total_allele_counts.get(key, {}) # get allele counts associated w/ location
-                    temp_dict[allele] = temp_dict.get(allele, 0) + allele_count  # update counts
-                    total_allele_counts[key] = temp_dict # replace counts
-            i += 1
-
-        # add total population allele frequencies to data
-        for loc, counts in total_allele_counts.items():
-            for k, v in counts.items():
-                total_allele_counts[loc][k] = v / sum(N) # normalize counts by total number of profiles
-            allele_freq_dict[loc]['total'] = {'alleles': [float(k) for k in list(counts.keys())], 
-                                              'frequency': [float(f) for f in list(counts.values())]}
+            # fill in missing alleles with frequency 0
+            for al in alleles_list:
+                frequency_dict[al] = frequency_dict.get(al, 0)
+                
+            al_list = list(frequency_dict.keys()) # get allele names in list
+            freq_list = list(frequency_dict.values()) # get allele frequencies in list
+            # print(sum(freq_list)) # for verifying sum to approx 1
+        
+            allele_freq_dict[loc_name][orig_name] = {'alleles': al_list} # add info to returned dict
+            allele_freq_dict[loc_name][orig_name] = {'frequency': freq_list} # add info to returned dict
 
     return allele_freq_dict
+
+
+def load_allele_freq_nist(**kwargs):
+    '''
+    Loads allele frequency data as seen from STRidER (https://strider.online/frequencies)
+    '''
+    allele_freq_dict = {} # data to be returned
+    baseDir       = kwargs.get('dir', 'NIST')
+    afamFilename  = os.path.join(baseDir, kwargs.get('afamFilename',  'NIST Fusion AfAm_Amended2017[1].csv') )
+    asianFilename = os.path.join(baseDir, kwargs.get('asianFilename', 'NIST Fusion Asian_Amended2017[1].csv'))
+    caucFilename  = os.path.join(baseDir, kwargs.get('caucFilename',  'NIST Fusion Cauc_Amended2017[1].csv') )
+    hispFilename  = os.path.join(baseDir, kwargs.get('hispFilename',  'NIST Fusion Hisp_Amended2017[1].csv') )
+    # read data 
+    afam_data = pd.read_csv(afamFilename)
+    asian_data = pd.read_csv(asianFilename)
+    cauc_data = pd.read_csv(caucFilename)
+    hisp_data = pd.read_csv(hispFilename) 
+    data = {'AfAm': afam_data, 'Asian': asian_data, 'Cauc': cauc_data, 'Hisp': hisp_data}
+    N = []
+    for df in data.values():
+        df_n = df[df['Allele'] == 'N']
+        N.append(int(df_n.values[0][1]))
+
+        # drop allele from index
+        df.drop(df_n.index[0], axis=0, inplace=True)
+
+    # convert data to dictionaries in expected format, also combine to create a total population frequency
+    i = 0
+    total_allele_counts = {}
+    for subpop, df in data.items():
+        for col in df.drop('Allele', axis=1).columns:
+            key = col.replace('_', ' ') # standardize key values (contributor profiles use space, database uses _)
+            # column is the location name ex. D3S1358
+            allele_freq_dict[key] = {**allele_freq_dict.get(key, {}), **{subpop: {'alleles': df['Allele'].astype('float'), 'frequency': df[col].astype('float')}}}
+
+            # update total counts of each allele
+            n = N[i]
+            for j, allele in enumerate(df['Allele']):
+                # iterate over Series
+                allele_freq = df.iloc[j][col] # allele frequency at current location
+                allele_count = allele_freq * n
+                temp_dict = total_allele_counts.get(key, {}) # get allele counts associated w/ location
+                temp_dict[allele] = temp_dict.get(allele, 0) + allele_count  # update counts
+                total_allele_counts[key] = temp_dict # replace counts
+        i += 1
+
+    # add total population allele frequencies to data
+    for loc, counts in total_allele_counts.items():
+        for k, v in counts.items():
+            total_allele_counts[loc][k] = v / sum(N) # normalize counts by total number of profiles
+        allele_freq_dict[loc]['total'] = {'alleles': [float(k) for k in list(counts.keys())], 
+                                          'frequency': [float(f) for f in list(counts.values())]}
+
+    return allele_freq_dict
+
+def load_allele_freq_ocme(**kwargs):
+    '''
+    Loads allele frequency data as seen from OCME sources
+    '''
+    print('load_allele_freq_ocme')
+    allele_freq_dict = {} # data to be returned
+    baseDir       = kwargs.get('dir', 'OCME')
+    afamFilename  = os.path.join(baseDir, kwargs.get('afamFilename',  'ocme_observed_afam.csv') )
+    asianFilename = os.path.join(baseDir, kwargs.get('asianFilename', 'ocme_observed_asian.csv') )
+    caucFilename  = os.path.join(baseDir, kwargs.get('caucFilename',  'ocme_observed_cauc.csv') )
+    hispFilename  = os.path.join(baseDir, kwargs.get('hispFilename',  'ocme_observed_hisp.csv') )
+    # read data 
+    afam_data = pd.read_csv(afamFilename)
+    asian_data = pd.read_csv(asianFilename)
+    cauc_data = pd.read_csv(caucFilename)
+    hisp_data = pd.read_csv(hispFilename) 
+    # Fill blank areas with 0.0
+
+    afam_data  = afam_data.fillna(0)
+    asian_data = asian_data.fillna(0)
+    cauc_data  = cauc_data.fillna(0)
+    hisp_data  = hisp_data.fillna(0)
+
+    data = {'AfAm': afam_data, 'Asian': asian_data, 'Cauc': cauc_data, 'Hisp': hisp_data}
+    N = []
+    for df in data.values():
+        df_n = df[df['Allele'] == 'N']
+        N.append(int(df_n.values[0][1]))
+
+        # drop allele from index
+        df.drop(df_n.index[0], axis=0, inplace=True)
+
+    # convert data to dictionaries in expected format, also combine to create a total population frequency
+    i = 0
+    total_allele_counts = {}
+    for subpop, df in data.items():
+        for col in df.drop('Allele', axis=1).columns:
+            key = col.replace('_', ' ') # standardize key values (contributor profiles use space, database uses _)
+            # column is the location name ex. D3S1358
+            allele_freq_dict[key] = {**allele_freq_dict.get(key, {}), **{subpop: {'alleles': df['Allele'].astype('float'), 'frequency': df[col].astype('float')}}}
+
+            # update total counts of each allele
+            n = N[i]
+            for j, allele in enumerate(df['Allele']):
+                # iterate over Series
+                allele_freq = df.iloc[j][col] # allele frequency at current location
+                allele_count = allele_freq * n
+                temp_dict = total_allele_counts.get(key, {}) # get allele counts associated w/ location
+                temp_dict[allele] = temp_dict.get(allele, 0) + allele_count  # update counts
+                total_allele_counts[key] = temp_dict # replace counts
+        i += 1
+
+    # add total population allele frequencies to data
+    for loc, counts in total_allele_counts.items():
+        for k, v in counts.items():
+            total_allele_counts[loc][k] = v / sum(N) # normalize counts by total number of profiles
+        allele_freq_dict[loc]['total'] = {'alleles': [float(k) for k in list(counts.keys())], 
+                                          'frequency': [float(f) for f in list(counts.values())]}
+
+    return allele_freq_dict
+
 
 def load_known_sample(known_sample_path):
     '''
@@ -109,7 +201,7 @@ def load_known_sample(known_sample_path):
             known_sample = eval(f.read())
     elif file_format == 'csv':
         data = pd.read_csv(known_sample_path)
-
+      
         # account for vertical format
         if data.shape[1] < 3:
             data.columns = data.iloc[0].values # assume there is some identifier and actual column names in first row
@@ -141,18 +233,22 @@ def generate_one_sample(known_sample, allele_freq, subpop):
         if test < 0.25:
             # replace none
             new_alleles = [a1, a2]
+            histogram[0] += 1
         elif test < 0.75:
             # replace one
             p = allele_freq[loci][subpop]['frequency']
             p = p / np.sum(p) # softmax b/c frequencies don't always add to exactly 1
             a3 = np.random.choice(a=allele_freq[loci][subpop]['alleles'], size=1, p=p)[0]
             if np.random.random() < 0.5:
+                histogram[1] += 1
                 # replace 1st
                 new_alleles = [a3, a2]
             else:
+                histogram[2] += 1
                 # replace 2nd
                 new_alleles = [a1, a3]
         else:
+            histogram[3] += 1
             # replace both
             p = allele_freq[loci][subpop]['frequency']
             p = p / np.sum(p) # softmax b/c frequencies don't always add to exactly 1
@@ -246,5 +342,8 @@ if __name__ == "__main__":
     dest_path = args.dest_path
 
     run_simulation(known_sample_path, allele_freq_data, subpop, num_siblings, dest_path)
+    print(histogram)
+    tot = sum(histogram)
+    print([f'{i}/{tot}: {i/tot}' for i in histogram])
 
     
